@@ -12,7 +12,19 @@
 | `modelPin` | 开 | 模型钉死:设置里最后点选的模型强制生效于之后**所有**请求,无视任何中间层改写 |
 | `hosts` | `[]` | 仅对指定 host 生效(如 `127.0.0.1:8601`);空 = 全部(仅影响前两项 fetch 改写;模型钉死与 host 无关) |
 
-设置面存在时在 设置 → 插件 出现卡片;否则直接改 `cordis.patch.yml` 的 entry config。
+## Web 设置入口
+
+**设置 → 通用** 页有三个开关行(模型钉死 / tool-call id 归一化 / 解除流式超时),
+改动即时保存。原理:官方 settings 线协议(describe/mutate)只服务 apiproxy 白名单
+namespace,第三方插件不在列;官方「插件」页又只渲染「host 服务 ∩ 客户端卡片认领」
+的交集,两头都到不了。所以本插件照 dsh-better-retry 的成熟模式自建:
+
+- 服务端注册 settings namespace(热更)+ 同源路由 `/dsh-some-optimizations/config`
+  (GET 读、POST `{patch}` 写,schema 校验后走 `settings.update`)
+- 浏览器端经 package.json 的 `dsh.client` 声明注入 `/plugins/<id>/client.js`,
+  往 `settings.general.item` slot 塞开关行
+
+`hosts` 与超时数值仍走 cordis entry config(patch yml)。
 
 ## 原理
 
