@@ -1,47 +1,29 @@
-# dsh-llm-callid-normalizer
+# dsh-some-optimizations
 
-DeepSeek Harness（DSH）插件：把中转伪造的 tool-call id（如 Kimi 系的 `read:0`）在 SSE 流上改写为全局唯一 id，从根上杜绝「历史加载失败：conversation Context … received more than one start Match」和会话中途不再显示的问题。
+一些优化 —— DeepSeek Harness(DSH)插件,一组可单独开关的个人 LLM 链路修复。
 
-## 问题
+## 开关
 
-部分 OpenAI 兼容中转在协议转换时按 `<工具名>:<流内序号>` 现造 tool_call id。每次模型响应序号都从 0 重来，于是同一会话日志里出现大量重复 callId；DSH 客户端回放按 callId 全局分区，撞到第二个 start 即中止，表现为：
+| 开关 | 默认 | 作用 |
+|---|---|---|
+| `normalizeCallIds` | 开 | 流内改写中转伪造的 tool-call id(如 Kimi 系 `read:0`),杜绝「历史加载失败:received more than one start Match」与会话中途不再显示 |
+| `unboundedStreamTimeouts` | 开 | 解除 Node/undici 300s 流式空闲超时——中转长思考/预填充期间零字节转发导致的「Stream ended without finish_reason」 |
+| `bodyTimeoutMs` / `headersTimeoutMs` | 0 | 上两项启用时的超时值;0 = 彻底禁用 |
+| `hosts` | `[]` | 仅对指定 host 生效(如 `127.0.0.1:8601`);空 = 全部 |
 
-- 打开历史报「历史加载失败」
-- 中途切换到这类模型后，跑一会儿后续消息不再显示（数据其实都在盘上）
+设置面存在时在 设置 → 插件 出现卡片;否则直接改 `cordis.patch.yml` 的 entry config。
 
 ## 原理
 
-与 dsh-llm-agentrouter 的 fence 同一手法：经 `ctx.effect()` 包装全局 `fetch`（卸载即还原），仅对成功的 `text/event-stream` 响应体做逐行改写——
+都挂在全局 fetch 缝隙(与 agentrouter fence 同款手法,经 `ctx.effect()` 可逆安装):
 
-- 命中 `<工具名>:<序号>` 模式或空 id：一律重写为 `<原id>#<序号>-<启动标签>`；进程内单调、跨重启靠随机标签分区，永不碰撞
-- 其他 id（UUID / `call_*` / `toolu_*` 等）逐字节透传，不影响 provider 内部按 id 关联的签名映射
-- openai-completions 与 anthropic-messages 两种线协议均覆盖；SSE 分帧、`\r\n`、注释行、`[DONE]` 原样保留
-- 请求方向永不修改：日志里已归一的 id 回传模型时配对关系由构造保证
+- id 归一化:仅拦截成功 SSE 响应,逐行改写,分帧/CRLF/注释/[DONE] 原样保留;首见 `<名>:<序号>` 改写为 `<原id>#<序号>-<启动标签>`,进程内单调、跨重启分区,永不碰撞
+- 超时加固:undici 共享全局注册表是内置 fetch 唯一认的旋钮,安装期替换 dispatcher、卸载还原(实测 per-request 注入外部 Agent 会死锁)
 
-## 安装
-
-```sh
-dsh plugin --profile web add link:/path/to/dsh-llm-callid-normalizer
-# 或发布后：
-dsh plugin --profile web add dsh-llm-callid-normalizer
-```
-
-重启 `dsh web` 生效。设置 → 插件 出现配置卡片。
-
-## 配置
-
-| 键 | 默认 | 说明 |
-|---|---|---|
-| `hosts` | `[]` | 仅拦截这些 URL host（如 `127.0.0.1:8601`）；空 = 全部 |
-| `announce` | `true` | 启动时打一条日志 |
+请求方向除 dispatcher 外不做任何改写。
 
 ## 测试
 
 ```sh
-npm test   # node --test tests/
+npm test
 ```
-
-## 已知边界
-
-- 只处理流式响应（harness 的 LLM 请求恒为流式）
-- 进程内计数器重启归零，但启动标签保证新旧日志的改写 id 不冲突

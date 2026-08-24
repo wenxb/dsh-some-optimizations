@@ -1,8 +1,7 @@
-# dsh-llm-callid-normalizer bundle — insert the normalizer into the runtime.
-#
-# The plugin patches the global fetch response side for SSE bodies and needs no
-# route configuration of its own: it composes with every provider, including
-# routes declared by other bundles (agentrouter, nvidia gateways, official).
+# 一些优化 bundle —— 把开关面板插件插入运行时。
+# 两个优化都挂在全局 fetch 缝隙上,无需任何路由配置:
+#   - normalizeCallIds      流内改写中转伪造的 tool-call id(防历史加载崩溃)
+#   - unboundedStreamTimeouts 解除 300s 流式空闲超时(防长思考断流)
 - insert:
-    - id: llm-callid-normalizer
-      name: 'dsh-llm-callid-normalizer'
+    - id: some-optimizations
+      name: 'dsh-some-optimizations'
