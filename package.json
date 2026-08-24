@@ -1,7 +1,7 @@
 {
   "name": "dsh-some-optimizations",
-  "version": "0.1.0",
-  "description": "一些优化:个人 LLM 链路优化开关集 —— 合成 tool-call id 归一化、解除长思考流式空闲超时等,均可在设置中单独开关。",
+  "version": "0.2.0",
+  "description": "一些优化:个人 LLM 链路优化开关集 —— 合成 tool-call id 归一化、解除长思考流式空闲超时、模型钉死(最后点选的模型强制生效于所有请求),均可在设置中单独开关。",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
