@@ -1,0 +1,8 @@
+# dsh-llm-callid-normalizer bundle — insert the normalizer into the runtime.
+#
+# The plugin patches the global fetch response side for SSE bodies and needs no
+# route configuration of its own: it composes with every provider, including
+# routes declared by other bundles (agentrouter, nvidia gateways, official).
+- insert:
+    - id: llm-callid-normalizer
+      name: 'dsh-llm-callid-normalizer'

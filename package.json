@@ -1,0 +1,24 @@
+{
+  "name": "dsh-llm-callid-normalizer",
+  "version": "0.1.0",
+  "description": "Normalize relay-fabricated tool-call ids (e.g. Kimi-style `read:0`) in LLM SSE streams so session logs never contain duplicate callIds.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test tests/*.spec.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-settings": "*",
+    "@deepseek-ai/schemastery": "*"
+  }
+}
