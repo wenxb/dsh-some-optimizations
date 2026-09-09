@@ -1,19 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { apply, Config, pinsStore } from '../lib/index.js'
-
-/** 每个用例独立的 pins 存储路径，避免互相串扰。 */
-function isolatePins() {
-  pinsStore.path = join(tmpdir(), `dso-test-pins-${process.pid}-${Math.random().toString(36).slice(2)}.json`)
-  pinsStore.cache = {}
-}
+import { apply, Config } from '../lib/index.js'
 
 const BASE = {
   hosts: [], normalizeCallIds: true, unboundedStreamTimeouts: true,
-  bodyTimeoutMs: 0, headersTimeoutMs: 0, modelPin: true, announce: false,
+  bodyTimeoutMs: 0, headersTimeoutMs: 0, announce: false,
 }
 
 /** 可工作的 settings/webServer 桩：真实走 apply 的两条 inject。 */
@@ -66,13 +57,6 @@ function harness(initial) {
   return { handler: routes[0].handler, get section() { return section }, listeners }
 }
 
-/** cordis waterfall 语义：先注册者最外层；最内层返回 seed。 */
-async function runWaterfall(listeners, seed, payload = {}) {
-  const cbs = [...(listeners.get('agent/request') ?? [])]
-  const call = (i) => async () => (i < cbs.length ? cbs[i](payload, call(i + 1)) : seed)
-  return call(0)()
-}
-
 const req = (method, url, body) => ({
   method,
   url,
@@ -93,19 +77,19 @@ test('GET /config 返回解析后的完整配置段', async () => {
   await h.handler(req('GET', '/dsh-some-optimizations/config'), r)
   assert.equal(r.statusCode, 200)
   const body = JSON.parse(r.body)
-  assert.equal(body.modelPin, true)
+  assert.equal(body.imageShed, true)
   assert.equal(typeof body.normalizeCallIds, 'boolean')
 })
 
 test('POST 合法 patch 生效并回显新值', async () => {
   const h = harness(BASE)
   const r = res()
-  await h.handler(req('POST', '/dsh-some-optimizations/config', JSON.stringify({ patch: { modelPin: false } })), r)
+  await h.handler(req('POST', '/dsh-some-optimizations/config', JSON.stringify({ patch: { imageShed: false } })), r)
   assert.equal(r.statusCode, 200)
-  assert.equal(JSON.parse(r.body).modelPin, false)
+  assert.equal(JSON.parse(r.body).imageShed, false)
   const g = res()
   await h.handler(req('GET', '/dsh-some-optimizations/config'), g)
-  assert.equal(JSON.parse(g.body).modelPin, false)
+  assert.equal(JSON.parse(g.body).imageShed, false)
 })
 
 test('POST 多字段合法 patch 一并生效', async () => {
@@ -146,63 +130,4 @@ test('其他路径 → 404；其他方法 → 405', async () => {
   const dm = res()
   await h.handler(req('DELETE', '/dsh-some-optimizations/config'), dm)
   assert.equal(dm.statusCode, 405)
-})
-
-// ===== /click（会话级钉子写入端）=====
-
-test('POST /click 记录会话选择并原子持久化', async () => {
-  isolatePins()
-  const h = harness(BASE)
-  const r = res()
-  await h.handler(req('POST', '/dsh-some-optimizations/click', JSON.stringify({
-    sessionId: 'sess-aabbccdd', provider: 'nvidia', model: 'kimi-k3', reasoningEffort: 'max',
-  })), r)
-  assert.equal(r.statusCode, 200)
-  assert.deepEqual(JSON.parse(r.body), { ok: true, count: 1 })
-  assert.deepEqual(pinsStore.cache['sess-aabbccdd'], { provider: 'nvidia', model: 'kimi-k3', reasoningEffort: 'max' })
-  // flush 在响应前完成 → 文件已落盘
-  const raw = JSON.parse(await readFile(pinsStore.path, 'utf8'))
-  assert.equal(raw.version, 1)
-  assert.deepEqual(raw.pins['sess-aabbccdd'], { provider: 'nvidia', model: 'kimi-k3', reasoningEffort: 'max' })
-})
-
-test('POST /click 缺字段 → 400；GET /click → 405', async () => {
-  isolatePins()
-  const h = harness(BASE)
-
-  const missing = res()
-  await h.handler(req('POST', '/dsh-some-optimizations/click', JSON.stringify({ sessionId: 's', provider: 'p' })), missing)
-  assert.equal(missing.statusCode, 400)
-
-  const badJson = res()
-  await h.handler(req('POST', '/dsh-some-optimizations/click', '{oops'), badJson)
-  assert.equal(badJson.statusCode, 400)
-
-  const wrongMethod = res()
-  await h.handler(req('GET', '/dsh-some-optimizations/click'), wrongMethod)
-  assert.equal(wrongMethod.statusCode, 405)
-})
-
-test('端到端：click 后该会话被钉住，其他会话不受影响', async () => {
-  isolatePins()
-  const h = harness(BASE)
-
-  const click = res()
-  await h.handler(req('POST', '/dsh-some-optimizations/click', JSON.stringify({
-    sessionId: 'sess-pinned', provider: 'nvidia', model: 'kimi-k3',
-  })), click)
-  assert.equal(click.statusCode, 200)
-
-  // 内层模拟官方覆盖：一律改回 claude
-  h.listeners.get('agent/request')?.push(async (_p, next) => {
-    const resolved = await next()
-    return { ...resolved, provider: 'agentrouter-claude', model: 'claude-opus-5' }
-  })
-
-  const seed = { provider: 'agentrouter-claude', model: 'claude-opus-5' }
-  const pinned = await runWaterfall(h.listeners, seed, { agent: { session: { id: 'sess-pinned' } } })
-  assert.deepEqual(pinned, { provider: 'nvidia', model: 'kimi-k3' })
-
-  const other = await runWaterfall(h.listeners, seed, { agent: { session: { id: 'sess-other' } } })
-  assert.deepEqual(other, seed)
 })

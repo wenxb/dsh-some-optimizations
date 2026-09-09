@@ -1,7 +1,7 @@
 {
   "name": "dsh-some-optimizations",
-  "version": "0.3.0",
-  "description": "针对 LLM 请求链路的实用优化：强制锁定所选模型、规范工具调用 ID、解除长思考流式超时限制。",
+  "version": "0.4.0",
+  "description": "针对 LLM 请求链路与宿主存储的实用优化：强制锁定所选模型、规范工具调用 ID、解除长思考流式超时、回收投影缓存孤儿行。",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
